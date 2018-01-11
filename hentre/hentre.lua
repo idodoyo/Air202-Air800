@@ -3,13 +3,7 @@ module(...,package.seeall)
 
 --[[
 功能需求：
-1、数据网络准备就绪后，连接后台
-2、连接成功后，每隔10秒钟发送一次心跳包"heart data\r\n"到后台；每隔20秒钟发送一次位置包"loc data\r\n"到后台
-3、与后台保持长连接，断开后主动再去重连，连接成功仍然按照第2条发送数据
-4、收到后台的数据时，在rcv函数中打印出来
-测试时请搭建自己的服务器，并且修改下面的PROT，ADDR，PORT，支持域名和IP地址
 
-此例子为长连接，只要是软件上能够检测到的网络异常，可以自动去重新连接
 ]]
 
 local ssub,schar,smatch,sbyte,slen = string.sub,string.char,string.match,string.byte,string.len
@@ -34,7 +28,7 @@ local reconncnt,reconncyclecnt,conning = 0,0
 返回值：无
 ]]
 local function print(...)
-	_G.print("test",...)
+	_G.print("hentre :",...)
 end
 
 --[[

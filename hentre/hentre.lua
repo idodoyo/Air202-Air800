@@ -1,240 +1,95 @@
-require"socket"
-module(...,package.seeall)
+require "socket"
+require "network_cfg"
 
---[[
-功能需求：
+module(..., package.seeall)
 
-]]
+--server register
+--input: dev_id-dev_id to register
+--return: true if register ok, or false
+local function server_register(dev_id)
+    local ret = false
+    local s = ""
+    --printf("get_register_crc16="..get_register_crc16("8658860364059060"))
+    printf("enter server_register")
+    ret,
+        s =
+        socket_transceive(
+        string.format(
+            "GET /dev/reg?did=%s&crc=%d HTTP/1.1\r\n" .. "Host: %s\n\r\n",
+            dev_id,
+            get_register_crc16(dev_id),
+            system_config.REGISTER_SERVER
+        ),
+        5000
+    )
+    printf("socket_transceive ret=", ret)
+    --,"s=",s)
+    --if transceive ok, decode
+    if (ret) then
+        ret = server_register_data_decode(s)
+    end
 
-local ssub,schar,smatch,sbyte,slen = string.sub,string.char,string.match,string.byte,string.len
---测试时请搭建自己的服务器
-local SCK_IDX,PROT,ADDR,PORT = 1,"TCP","120.26.196.195",9999
---linksta:与后台的socket连接状态
-local linksta
---一个连接周期内的动作：如果连接后台失败，会尝试重连，重连间隔为RECONN_PERIOD秒，最多重连RECONN_MAX_CNT次
---如果一个连接周期内都没有连接成功，则等待RECONN_CYCLE_PERIOD秒后，重新发起一个连接周期
---如果连续RECONN_CYCLE_MAX_CNT次的连接周期都没有连接成功，则重启软件
-local RECONN_MAX_CNT,RECONN_PERIOD,RECONN_CYCLE_MAX_CNT,RECONN_CYCLE_PERIOD = 3,5,3,20
---reconncnt:当前连接周期内，已经重连的次数
---reconncyclecnt:连续多少个连接周期，都没有连接成功
---一旦连接成功，都会复位这两个标记
---conning:是否在尝试连接
-local reconncnt,reconncyclecnt,conning = 0,0
-
---[[
-函数名：print
-功能  ：打印接口，此文件中的所有打印都会加上test前缀
-参数  ：无
-返回值：无
-]]
-local function print(...)
-	_G.print("hentre :",...)
+    return ret
 end
 
---[[
-函数名：snd
-功能  ：调用发送接口发送数据
-参数  ：
-        data：发送的数据，在发送结果事件处理函数ntfy中，会赋值到item.data中
-		para：发送的参数，在发送结果事件处理函数ntfy中，会赋值到item.para中 
-返回值：调用发送接口的结果（并不是数据发送是否成功的结果，数据发送是否成功的结果在ntfy中的SEND事件中通知），true为成功，其他为失败
-]]
-function snd(data,para)
-	return socket.send(SCK_IDX,data,para)
+--pack message and send to server
+--input: send_str[string]- string to send to server
+--return: true - if success or false
+local HENTRE_MSG_HEAD_LEN = 38
+local HENTRE_MSG_TAIL_LEN = 2
+local HENTRE_MSG_START = 0x7e
+local HENTRE_MSG_CONTENT_JSON = 0
+local function pack_and_send_to_server(send_str)
+    local msg_total_len = 0
+    local msg_to_send = ""
+
+    if (#sys_config.devID ~= 16 or #sys_config.security ~= 16) or type(send_str) ~= "string" then
+        printf(
+            "pack_and_send_to_server len of devID or security error,len(devID)=" ..
+                #sys_config.devID .. " len(security)=" .. #sys_config.security
+        )
+        printf("type(send_str)=" .. type(send_str))
+        return false
+    end
+
+    --msgLen = HENTRE_MSG_HEAD_LEN + len + HENTRE_MSG_TAIL_LEN;
+    --memset(msgBuff, 0, msgLen + 1);
+    --msgBuff[0] = HENTRE_MSG_START;
+    --memcpy(msgBuff + 1, &msgLen, 4);
+    --memcpy(msgBuff + 5, getSysContext()->sysConfig.devID, 16);
+    --msgBuff[21] = HENTRE_MSG_CONTENT_JSON;
+    --memcpy(msgBuff + 22, getSysContext()->sysConfig.security, 16);
+    --memcpy(msgBuff + 38, json, len);
+    --crc16_msg(msgBuff, msgLen);
+
+    msg_total_len = #send_str + HENTRE_MSG_HEAD_LEN + HENTRE_MSG_TAIL_LEN
+    msg_to_send = msg_to_send .. pack.pack("<b1", HENTRE_MSG_START)
+    msg_to_send = msg_to_send .. pack.pack("<I1", msg_total_len)
+    msg_to_send = msg_to_send .. sys_config.devID
+    msg_to_send = msg_to_send .. pack.pack("<b1", HENTRE_MSG_CONTENT_JSON)
+    msg_to_send = msg_to_send .. sys_config.security
+    msg_to_send = msg_to_send .. send_str
+    msg_to_send = msg_to_send .. pack.pack(">H1", get_msg_crc(msg_to_send))
+    printf("pack_and_send_to_server total len=" .. msg_total_len .. " len(msg_to_send)=" .. #msg_to_send)
+    local temp = ""
+    for i = 1, #msg_to_send do
+        temp = temp .. string.format("%02X", string.byte(msg_to_send, i))
+    end
+    printf("msg_to_send=" .. temp)
+
+    --send to server
+    local ret = socket_send(msg_to_send)
+    if (not ret) then
+        printf("pack_and_send_to_server send to server fail")
+    end
+
+    return ret
 end
 
+local app = {
+    DISPLAY_DEBUG = function(a, b, c)
+        print("DEBUG:", a, b, c)
+    end
+}
 
---[[
-函数名：locrpt
-功能  ：发送位置包数据到后台
-参数  ：无
-返回值：无
-]]
-function locrpt()
-	print("locrpt",linksta)
-	if linksta then
-		snd("loc data\r\n","LOCRPT")		
-	end
-end
-
-
---[[
-函数名：locrptcb
-功能  ：位置包发送回调，启动定时器，20秒钟后再次发送位置包
-参数  ：		
-		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
-		result： bool类型，发送结果，true为成功，其他为失败
-返回值：无
-]]
-function locrptcb(item,result)
-	print("locrptcb",linksta)
-	if linksta then
-		sys.timer_start(locrpt,20000)
-	end
-end
-
-
---[[
-函数名：heartrpt
-功能  ：发送心跳包数据到后台
-参数  ：无
-返回值：无
-]]
-function heartrpt()
-	print("heartrpt",linksta)
-	if linksta then
-		snd("heart data\r\n","HEARTRPT")		
-	end
-end
-
---[[
-函数名：locrptcb
-功能  ：心跳包发送回调，启动定时器，10秒钟后再次发送心跳包
-参数  ：		
-		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
-		result： bool类型，发送结果，true为成功，其他为失败
-返回值：无
-]]
-function heartrptcb(item,result)
-	print("heartrptcb",linksta)
-	if linksta then
-		sys.timer_start(heartrpt,10000)
-	end
-end
-
-
---[[
-函数名：sndcb
-功能  ：数据发送结果处理
-参数  ：          
-		item：table类型，{data=,para=}，消息回传的参数和数据，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
-		result： bool类型，发送结果，true为成功，其他为失败
-返回值：无
-]]
-local function sndcb(item,result)
-	print("sndcb",item.para,result)
-	if not item.para then return end
-	if item.para=="LOCRPT" then
-		locrptcb(item,result)
-	elseif item.para=="HEARTRPT" then
-		heartrptcb(item,result)
-	end
-end
-
-
---[[
-函数名：reconn
-功能  ：重连后台处理
-        一个连接周期内的动作：如果连接后台失败，会尝试重连，重连间隔为RECONN_PERIOD秒，最多重连RECONN_MAX_CNT次
-        如果一个连接周期内都没有连接成功，则等待RECONN_CYCLE_PERIOD秒后，重新发起一个连接周期
-        如果连续RECONN_CYCLE_MAX_CNT次的连接周期都没有连接成功，则重启软件
-参数  ：无
-返回值：无
-]]
-local function reconn()
-	print("reconn",reconncnt,conning,reconncyclecnt)
-	--conning表示正在尝试连接后台，一定要判断此变量，否则有可能发起不必要的重连，导致reconncnt增加，实际的重连次数减少
-	if conning then return end
-	--一个连接周期内的重连
-	if reconncnt < RECONN_MAX_CNT then		
-		reconncnt = reconncnt+1
-		socket.disconnect(SCK_IDX)
-	--一个连接周期的重连都失败
-	else
-		reconncnt,reconncyclecnt = 0,reconncyclecnt+1
-		if reconncyclecnt >= RECONN_CYCLE_MAX_CNT then
-			sys.restart("connect fail")
-		end
-		link.shut()
-	end
-end
-
---[[
-函数名：ntfy
-功能  ：socket状态的处理函数
-参数  ：
-        idx：number类型，socket.lua中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
-        evt：string类型，消息事件类型
-		result： bool类型，消息事件结果，true为成功，其他为失败
-		item：table类型，{data=,para=}，消息回传的参数和数据，目前只是在SEND类型的事件中用到了此参数，例如调用socket.send时传入的第2个和第3个参数分别为dat和par，则item={data=dat,para=par}
-返回值：无
-]]
-function ntfy(idx,evt,result,item)
-	print("ntfy",evt,result,item)
-	--连接结果（调用socket.connect后的异步事件）
-	if evt == "CONNECT" then
-		conning = false
-		--连接成功
-		if result then
-			reconncnt,reconncyclecnt,linksta = 0,0,true
-			--停止重连定时器
-			sys.timer_stop(reconn)
-			--发送心跳包到后台
-			heartrpt()
-			--发送位置包到后台
-			locrpt()
-		--连接失败
-		else
-			--RECONN_PERIOD秒后重连
-			sys.timer_start(reconn,RECONN_PERIOD*1000)
-		end	
-	--数据发送结果（调用socket.send后的异步事件）
-	elseif evt == "SEND" then
-		if item then
-			sndcb(item,result)
-		end
-		--发送失败，RECONN_PERIOD秒后重连后台，不要调用reconn，此时socket状态仍然是CONNECTED，会导致一直连不上服务器
-		--if not result then sys.timer_start(reconn,RECONN_PERIOD*1000) end
-		if not result then socket.disconnect(idx) end
-	--连接被动断开
-	elseif evt == "STATE" and result == "CLOSED" then
-		linksta = false
-		sys.timer_stop(heartrpt)
-		sys.timer_stop(locrpt)
-		sys.timer_start(connect,RECONN_PERIOD*1000)
-	--连接主动断开（调用link.shut后的异步事件）
-	elseif evt == "STATE" and result == "SHUTED" then
-		linksta = false
-		sys.timer_stop(heartrpt)
-		sys.timer_stop(locrpt)
-		connect()
-	--连接主动断开（调用socket.disconnect后的异步事件）
-	elseif evt == "DISCONNECT" then
-		linksta = false
-		sys.timer_stop(heartrpt)
-		sys.timer_stop(locrpt)
-		connect()		
-	end
-	--其他错误处理，断开数据链路，重新连接
-	if smatch((type(result)=="string") and result or "","ERROR") then
-		socket.disconnect(idx)
-	end
-end
-
---[[
-函数名：rcv
-功能  ：socket接收数据的处理函数
-参数  ：
-        idx ：socket.lua中维护的socket idx，跟调用socket.connect时传入的第一个参数相同，程序可以忽略不处理
-        data：接收到的数据
-返回值：无
-]]
-function rcv(idx,data)
-	print("rcv",data)
-end
-
---[[
-函数名：connect
-功能  ：创建到后台服务器的连接；
-        如果数据网络已经准备好，会理解连接后台；否则，连接请求会被挂起，等数据网络准备就绪后，自动去连接后台
-		ntfy：socket状态的处理函数
-		rcv：socket接收数据的处理函数
-参数  ：无
-返回值：无
-]]
-function connect()
-	socket.connect(SCK_IDX,PROT,ADDR,PORT,ntfy,rcv)
-	conning = true
-end
-
-connect()
+sys.regapp(app)

@@ -1,5 +1,7 @@
 require "display_cfg"
 
+module(..., package.seeall)
+
 --delay for display
 function delay(cnt)
     --local temp=cnt or 1

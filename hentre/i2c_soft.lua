@@ -1,3 +1,5 @@
+require "i2c_soft"
+
 module(..., package.seeall)
 
 local function printf(...)
@@ -41,15 +43,14 @@ local function SDARead()
 end
 
 --to read scl pin, return value 1 or 0 read from scl pin
---[[ local function SCLRead()
-
-    pio.pin.close(gpio.gpio_config.gpioI2CScl.pin)
+local function SCLRead()
+    --pins.close(gpio.gpio_config.gpioI2CScl.pin)
+    pins.close(gpio.gpio_config.gpioI2CScl.pin)
     --set output dir
-    pio.pin.setdir(pio.INPUT, gpio.gpio_config.gpioI2CScl.pin)
+    pins.setdir(pio.INPUT,gpioI2CScl.pin)
+    return pins.get(gpioI2CScl.pin)
+end 
 
-    return pio.pin.getval(gpio.gpio_config.gpioI2CScl.pin)
-
-end ]]
 local function delay(n)
     n = n * 5
     for i = 1, n do

@@ -1,16 +1,15 @@
-
 module(..., package.seeall)
 
 local function printf(...)
-    log.info("Hentre I2C", ...)
+    _G.print("Hentre I2C", ...)
 end
 
 local _I2C_ERROR = {
     ERROR_NONE = 0x00,
-    ACK_ERROR = 0x01,
-    TIME_OUT_ERROR = 0x02,
-    CHECKSUM_ERROR = 0x04,
-    UNIT_ERROR = 0x08
+    ERROR_ACK = 0x01,
+    ERROR_TIME_OUT = 0x02,
+    ERROR_CHECKSUM = 0x04,
+    ERROR_UNIT = 0x08
 }
 
 local _I2C_ACK_NAK = {
@@ -18,7 +17,7 @@ local _I2C_ACK_NAK = {
     NO_ACK = 1
 }
 
-local SLAVE_ADDRESS = 0xA8
+--local SLAVE_ADDRESS = 0xA8
 local I2C_ERROR = system_func.get_read_only_table(_I2C_ERROR)
 local I2C_ACK_NAK = system_func.get_read_only_table(_I2C_ACK_NAK)
 local SET = 1
@@ -28,60 +27,17 @@ local scl_is_output = false
 
 --to set sda to value 1 or 0, return true if ok, or false
 local function SDA(set_value)
-    if (type(set_value) ~= "number") then
-        printf("in SDA, para error")
-        return false
-    end
-
-    if not sda_is_output then
-        --is output
-        sda_is_output = true
-        --close
-        pio.pin.close(gpio.gpio_config.gpioI2CSda.pin)
-        --set output dir
-        pio.pin.setdir(pio.OUTPUT, gpio.gpio_config.gpioI2CSda.pin)
-    end
-
-    --set value
-    pio.pin.setval(set_value, gpio.gpio_config.gpioI2CSda.pin)
-
-    return true
+    pin.set(set_value,gpioI2CSda.pin)
 end
 
 --to set scl to value 1 or 0, return true if ok, or false
 local function SCL(set_value)
-    if (type(set_value) ~= "number") then
-        printf("in SCL para error")
-        return false
-    end
-
-    if not scl_is_output then
-        --is output
-        scl_is_output = true
-        --close pin
-        pio.pin.close(gpio.gpio_config.gpioI2CScl.pin)
-        --set output dir
-        pio.pin.setdir(pio.OUTPUT, gpio.gpio_config.gpioI2CScl.pin)
-    end
-
-    --set value
-    pio.pin.setval(set_value, gpio.gpio_config.gpioI2CScl.pin)
-
-    return true
+    pins.set(set_value,gpioI2CScl.pin)
 end
 
 --to read sda pin, return value 1 or 0 read from sda pin
 local function SDARead()
-    if sda_is_output then
-        --is input
-        sda_is_output = false
-        --close
-        pio.pin.close(gpio.gpio_config.gpioI2CSda.pin)
-        --set output dir
-        pio.pin.setdir(pio.INPUT, gpio.gpio_config.gpioI2CSda.pin)
-    end
-
-    return pio.pin.getval(gpio.gpio_config.gpioI2CSda.pin)
+    return pins.get(gpioI2CSda.pin)
 end
 
 --to read scl pin, return value 1 or 0 read from scl pin
@@ -96,7 +52,6 @@ end
 end ]]
 local function delay(n)
     n = n * 5
-
     for i = 1, n do
     end
 end
@@ -145,7 +100,7 @@ local function I2c_WriteByte(txByte)
     delay(1)
 
     if (SDARead() > 0) then
-        error = I2C_ERROR.ACK_ERROR --//check ack from i2c slave
+        error = I2C_ERROR.ERROR_ACK --//check ack from i2c slave
     end
 
     SCL(RESET)
@@ -156,7 +111,7 @@ end
 
 local function I2c_ReadByte(ack)
     local rxByte = 0
-
+    
     SDA(SET)
     for i = 1, 8 do
         SCL(SET)

@@ -1,4 +1,6 @@
-require "sensor_cfg"
+require "i2c_soft"
+
+local SLAVE_ADDRESS = 0xA8
 
 --get flow from i2c meter sensor
 --input: treated_flag[boolean]- if is true, will config flow to treatedflow and config tds to tdstreated

@@ -1,5 +1,6 @@
 require "socket"
 require "network_cfg"
+require "gpio_cfg"
 
 module(..., package.seeall)
 
@@ -86,10 +87,17 @@ local function pack_and_send_to_server(send_str)
     return ret
 end
 
+local pin8flg = true
+local function pin8set()
+	pins.set(pin8flg,gpio_cfg.gpioKeep)
+	pin8flg = not pin8flg
+end
+
 local app = {
     DISPLAY_DEBUG = function(a, b, c)
         print("DEBUG:", a, b, c)
     end
-}
 
+}
+sys.timer_loop_start(pin8set,1000)
 sys.regapp(app)

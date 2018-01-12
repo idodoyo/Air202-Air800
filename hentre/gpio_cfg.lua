@@ -1,7 +1,7 @@
 module(..., package.seeall)
 
 local function printf(...)
-    _G.print("Hentre gpio", ...)
+    _G.print("Hentre gpio cfg", ...)
 end
 
 gpio_config = {

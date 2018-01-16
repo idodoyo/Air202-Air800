@@ -2,6 +2,10 @@ require"socket"
 
 module(...,package.seeall)
 
+local function print(...)
+	_G.print("[---HENTRE---]network_run",...)
+end
+
 --[[
 功能需求：
 network management
